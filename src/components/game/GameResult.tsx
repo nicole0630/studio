@@ -1,3 +1,4 @@
+
 "use client";
 
 import { Button } from '@/components/ui/button';
@@ -5,26 +6,38 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Award, RotateCcw, Home, TrendingUp, TrendingDown } from 'lucide-react';
 import Link from 'next/link';
 
+type GameOverReason = "miss" | "completed" | "timeUp" | null;
+
 interface GameResultProps {
   score: number;
   totalNotes: number;
   misses: number;
   onPlayAgain: () => void;
+  gameOverReason: GameOverReason;
 }
 
-export function GameResult({ score, totalNotes, misses, onPlayAgain }: GameResultProps) {
+export function GameResult({ score, totalNotes, misses, onPlayAgain, gameOverReason }: GameResultProps) {
   const accuracy = totalNotes > 0 ? Math.round(((totalNotes - misses) / totalNotes) * 100) : 0;
-  let message = "Good Effort!";
-  if (accuracy > 90) message = "Amazing Performance!";
-  else if (accuracy > 75) message = "Great Job!";
-  else if (accuracy > 50) message = "Nice Try!";
+  let titleMessage = "Good Effort!"; // Default message
+
+  if (gameOverReason === "miss") {
+    titleMessage = "回憶模糊"; // "Memories are blurry"
+  } else if (gameOverReason === "timeUp") {
+    titleMessage = "時間到!"; // "Time's Up!"
+  } else if (gameOverReason === "completed") {
+    if (accuracy > 90) titleMessage = "Amazing Performance!";
+    else if (accuracy > 75) titleMessage = "Great Job!";
+    else if (accuracy > 50) titleMessage = "Nice Try!";
+    // "Good Effort!" remains if none of the above for "completed"
+  }
+
 
   return (
     <Card className="w-full max-w-lg text-center p-6 rounded-2xl shadow-xl clay-inset bg-card/90 backdrop-blur-sm">
       <CardHeader className="items-center">
         <Award size={72} className="text-accent animate-pulse" />
         <CardTitle className="text-4xl font-extrabold text-primary mt-4">
-          {message}
+          {titleMessage}
         </CardTitle>
         <CardDescription className="text-lg text-foreground/80 mt-2">
           You've completed the rhythm!

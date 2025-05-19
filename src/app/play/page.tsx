@@ -1,10 +1,11 @@
+
 "use client";
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { SwingingCharacter } from '@/components/game/SwingingCharacter';
 import { RhythmBar } from '@/components/game/RhythmBar';
-import { GameResult } from '@/components/game/GameResult';
 import type { Note } from '@/components/game/RhythmBar';
+import { GameResult } from '@/components/game/GameResult';
 import { Button } from '@/components/ui/button';
 import { RefreshCw, Home } from 'lucide-react';
 import Link from 'next/link';
@@ -14,20 +15,28 @@ const TOTAL_NOTES = 20;
 const NOTE_SPEED = 5; // pixels per frame (approx)
 const TARGET_ZONE_START = 50; // For rhythm bar
 const TARGET_ZONE_END = 150;  // For rhythm bar
-const GAME_DURATION_MS = 60000; // 1 minute, or handle by number of notes
+const GAME_DURATION_MS = 60000; // 1 minute
 
 type GameState = "initial" | "playing" | "paused" | "gameOver";
+type GameOverReason = "miss" | "completed" | "timeUp" | null;
 
 export default function PlayPage() {
   const [gameState, setGameState] = useState<GameState>("initial");
   const [score, setScore] = useState(0);
   const [swingDirection, setSwingDirection] = useState<"left" | "right" | "center">("center");
   const [notes, setNotes] = useState<Note[]>([]);
-  const [activeNoteIndex, setActiveNoteIndex] = useState(0);
   const [combo, setCombo] = useState(0);
   const [misses, setMisses] = useState(0);
   const [notesPlayed, setNotesPlayed] = useState(0);
   const [timeLeft, setTimeLeft] = useState(GAME_DURATION_MS / 1000);
+  const [gameOverReason, setGameOverReason] = useState<GameOverReason>(null);
+
+  // Refs for current state values to use in intervals/callbacks without stale closures
+  const gameStateRef = useRef(gameState);
+  useEffect(() => { gameStateRef.current = gameState; }, [gameState]);
+
+  const gameOverReasonRef = useRef(gameOverReason);
+  useEffect(() => { gameOverReasonRef.current = gameOverReason; }, [gameOverReason]);
 
 
   const generateInitialNotes = useCallback(() => {
@@ -50,49 +59,85 @@ export default function PlayPage() {
     setCombo(0);
     setMisses(0);
     setNotesPlayed(0);
-    setActiveNoteIndex(0);
     setSwingDirection("center");
     setTimeLeft(GAME_DURATION_MS / 1000);
+    setGameOverReason(null);
     setGameState("playing");
   };
 
+  const handleMiss = useCallback((noteId: number) => {
+    if (gameStateRef.current !== 'playing') return; 
+
+    setNotes(prevNotes => prevNotes.map(n => n.id === noteId && !n.hit ? {...n, missed: true} : n));
+    setCombo(0); // Use functional update if depending on prev combo: c => 0
+    setMisses(m => m + 1);
+    setNotesPlayed(p => p + 1);
+    setGameOverReason("miss");
+    setGameState("gameOver");
+  }, []); // Dependencies are stable setters from useState, gameStateRef handles current gameState
+
+  // Game loop for moving notes and decrementing time
   useEffect(() => {
-    if (gameState === "initial") {
-       // Wait for user to click start
-    } else if (gameState === 'playing') {
-      const gameInterval = setInterval(() => {
-        setNotes(prevNotes =>
-          prevNotes.map(note => ({
-            ...note,
-            position: note.hit || note.missed ? note.position : Math.max(0, note.position - NOTE_SPEED),
-          })).filter(note => !note.hit && !note.missed && note.position > -50) // Keep notes until they are way past
-        );
+    if (gameState !== "playing") return;
 
-        // Check for misses for notes that have passed the target zone
-         notes.forEach(note => {
-          if (!note.hit && !note.missed && note.position < TARGET_ZONE_START - 50) { // Note fully passed target zone
-            handleMiss(note.id);
-          }
-        });
+    const gameInterval = setInterval(() => {
+      // 1. Update note positions
+      setNotes(prevNotes =>
+        prevNotes.map(note => ({
+          ...note,
+          // Active notes move. Hit/missed notes stop to show feedback, will be filtered if they stop moving.
+          // To ensure they scroll off, all notes should continue moving or be handled differently.
+          // For now, let's assume hit/missed notes might stop, relying on filter for removal.
+          // Original behavior: note.hit || note.missed ? note.position : Math.max(0, note.position - NOTE_SPEED)
+          // To ensure they clear screen:
+          position: Math.max(-100, note.position - NOTE_SPEED),
+        })).filter(note => note.position > -100) // Filter when they go far left
+      );
 
-        setTimeLeft(prev => {
-          if (prev <= 1) {
-            setGameState("gameOver");
-            clearInterval(gameInterval);
+      // 2. Update time left
+      setTimeLeft(prevTime => {
+        if (prevTime <= (16 / 1000)) { // Approx one frame's worth
+            if (gameStateRef.current === "playing") { 
+                setGameOverReason("timeUp");
+                setGameState("gameOver");
+            }
             return 0;
-          }
-          return prev - (16/1000); // roughly 60fps interval
-        });
-
-        if (notesPlayed >= TOTAL_NOTES && notes.every(n => n.hit || n.missed)) {
-           setGameState("gameOver");
         }
+        return prevTime - (16 / 1000);
+      });
+    }, 16); 
 
-      }, 16); // Roughly 60 FPS
+    return () => clearInterval(gameInterval);
+  }, [gameState]);
 
-      return () => clearInterval(gameInterval);
+  // useEffect for checking misses due to notes passing by
+  useEffect(() => {
+    if (gameState !== "playing") return;
+
+    const notePassedBy = notes.find(
+        note => !note.hit && !note.missed && note.position < TARGET_ZONE_START - 50 
+    );
+
+    if (notePassedBy) {
+        handleMiss(notePassedBy.id);
     }
-  }, [gameState, notes, notesPlayed, handleMiss]); // Added handleMiss to dependencies
+  }, [notes, gameState, handleMiss, TARGET_ZONE_START]);
+
+  // useEffect for checking game completion by all notes played
+  useEffect(() => {
+    if (gameState !== "playing") return;
+
+    if (notesPlayed >= TOTAL_NOTES) {
+        // Ensure all notes in the current state array are also accounted for if it's not aggressively filtered
+        // const allNotesInStateProcessed = notes.every(n => n.hit || n.missed || n.position < -50);
+        // if (allNotesInStateProcessed) {
+            if (gameOverReasonRef.current === null) { // Only set to completed if no other reason (like miss) set it first
+                setGameOverReason("completed");
+            }
+            setGameState("gameOver");
+        // }
+    }
+  }, [notesPlayed, gameState, TOTAL_NOTES]); // Removed 'notes' dependency to simplify, relying on notesPlayed
 
   const handleKeyPress = useCallback((event: KeyboardEvent) => {
     if (gameState !== "playing") return;
@@ -101,32 +146,26 @@ export default function PlayPage() {
     if (!keyType) return;
 
     setSwingDirection(keyType);
-    setTimeout(() => setSwingDirection("center"), 200); // Return to center after a brief swing
+    setTimeout(() => setSwingDirection("center"), 200); 
 
     const currentNote = notes.find(n => !n.hit && !n.missed && n.position >= TARGET_ZONE_START && n.position <= TARGET_ZONE_END);
 
-    if (currentNote && currentNote.type === keyType) {
-      setScore(s => s + 10 + combo * 5);
-      setCombo(c => c + 1);
-      setNotes(prevNotes => prevNotes.map(n => n.id === currentNote.id ? {...n, hit: true} : n));
-      setNotesPlayed(p => p + 1);
-    } else if (currentNote) {
-      // Hit wrong key for an active note or missed timing
-      handleMiss(currentNote.id);
+    if (currentNote) {
+      if (currentNote.type === keyType) {
+        setScore(s => s + 10 + combo * 5);
+        setCombo(c => c + 1);
+        setNotes(prevNotes => prevNotes.map(n => n.id === currentNote.id ? {...n, hit: true} : n));
+        setNotesPlayed(p => p + 1);
+      } else {
+        // Hit wrong key for an active note
+        handleMiss(currentNote.id);
+      }
     } else {
-      // Pressed key with no active note in zone
-      setCombo(0); // Break combo on any miss-timed press
+      // Pressed key with no active note in zone - this currently only breaks combo
+      setCombo(0);
+      // If this should also end the game, call handleMiss with a dummy/special ID or modify handleMiss
     }
-  }, [gameState, notes, combo]); // Removed handleMiss from here, it's called from useEffect or on wrong key
-
-  // Define handleMiss outside useEffect or ensure it's stable
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  function handleMiss(noteId: number) {
-    setNotes(prevNotes => prevNotes.map(n => n.id === noteId && !n.hit ? {...n, missed: true} : n));
-    setCombo(0);
-    setMisses(m => m + 1);
-    setNotesPlayed(p => p + 1);
-  }
+  }, [gameState, notes, combo, handleMiss, TARGET_ZONE_START, TARGET_ZONE_END]);
 
 
   useEffect(() => {
@@ -149,7 +188,13 @@ export default function PlayPage() {
   }
   
   if (gameState === "gameOver") {
-    return <GameResult score={score} totalNotes={TOTAL_NOTES} misses={misses} onPlayAgain={startGame} />;
+    return <GameResult 
+        score={score} 
+        totalNotes={TOTAL_NOTES} 
+        misses={misses} 
+        onPlayAgain={startGame} 
+        gameOverReason={gameOverReason} 
+      />;
   }
 
   return (
