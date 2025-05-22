@@ -13,9 +13,10 @@ interface GameResultProps {
   misses: number;
   onPlayAgain: () => void;
   gameOverReason: GameOverReason;
+  songName: string;
 }
 
-export function GameResult({ score, totalNotes, misses, onPlayAgain, gameOverReason }: GameResultProps) {
+export function GameResult({ score, totalNotes, misses, onPlayAgain, gameOverReason, songName }: GameResultProps) {
   const accuracy = totalNotes > 0 ? Math.round(((totalNotes - misses) / totalNotes) * 100) : 0;
   let titleMessage = "Good Effort!"; // Default message
 
@@ -39,7 +40,7 @@ export function GameResult({ score, totalNotes, misses, onPlayAgain, gameOverRea
           {titleMessage}
         </CardTitle>
         <CardDescription className="text-lg text-foreground/80 mt-2">
-          You've completed the rhythm!
+          {songName}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
