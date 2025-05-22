@@ -1,4 +1,3 @@
-
 "use client";
 
 import { Button } from '@/components/ui/button';
@@ -57,10 +56,10 @@ export function GameResult({ score, totalNotes, misses, onPlayAgain, gameOverRea
         </div>
       </CardContent>
       <CardFooter className="flex flex-col sm:flex-row justify-center gap-4 mt-6">
-        <Button onClick={onPlayAgain} size="lg" className="rounded-xl clay-button hover:scale-105 transition-transform duration-200 ease-out bg-primary hover:bg-primary/90 text-primary-foreground">
+        <Button onClick={onPlayAgain} className="rounded-xl clay-button hover:scale-105 transition-transform duration-200 ease-out bg-primary hover:bg-primary/90 text-primary-foreground h-11 px-8">
           <RotateCcw size={24} className="mr-2" /> Play Again
         </Button>
-        <Button asChild size="lg" variant="outline" className="rounded-xl clay-button hover:scale-105 transition-transform duration-200 ease-out border-accent text-accent hover:bg-accent/10">
+        <Button asChild className="rounded-xl clay-button hover:scale-105 transition-transform duration-200 ease-out border border-input bg-background hover:bg-accent hover:text-accent-foreground h-11 px-8">
           <Link href="/">
             <Home size={24} className="mr-2" /> Other Games
           </Link>
